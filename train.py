@@ -13,9 +13,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 config = yaml.load(open(os.path.join(BASE_DIR, 'config.yaml'), 'r'), Loader=yaml.FullLoader)
 
 
-def train(model, dataloader, val_dataloader, optimizer, criterion, device, lr_scheduler=None, infoNCE=None):
+def train(model, dataloader, val_dataloader, optimizer, criterion, device, lr_scheduler=None):
     best_val_loss = 10
-    lambda_ = 0.2
     
     for epoch in range(config['num_epochs']):
         model.train()
@@ -29,12 +28,7 @@ def train(model, dataloader, val_dataloader, optimizer, criterion, device, lr_sc
             tgt_mask = (tgt_in != 0).unsqueeze(1).unsqueeze(2)
             tgt_mask = (tgt_mask,(torch.tril(torch.ones(tgt_in.size(1), tgt_in.size(1), device=device)).bool()).unsqueeze(0).unsqueeze(1))
             
-            output, enc_output = model(src, tgt_in, src_mask, tgt_mask)
-            if infoNCE:
-                enc_output, enc_output_2 = enc_output
-                s_mask = (src != 0).float()
-                t_mask = (tgt_in != 0).float()
-                loss += lambda_ * infoNCE(enc_output, enc_output_2, s_mask, t_mask)
+            output, _ = model(src, tgt_in, src_mask, tgt_mask)
             
             # [batch_size * seq_len, cn_vocab_size], [batch_size * seq_len]
             loss += criterion(output.view(-1, output.size(-1)), tgt_out.view(-1))
@@ -55,10 +49,7 @@ def train(model, dataloader, val_dataloader, optimizer, criterion, device, lr_sc
         if val_loss/len(val_dataloader) < best_val_loss:
             best_val_loss = val_loss/len(val_dataloader)
             print(f'New best model with val loss {best_val_loss:.4f}, saving model...')
-            if infoNCE:
-                model_save(model, os.path.join(BASE_DIR, 'model_path', 'best_model_infoNCE.pth'))
-            else:
-                model_save(model, os.path.join(BASE_DIR, 'model_path', 'best_model.pth'))
+            model_save(model, os.path.join(BASE_DIR, 'model_path', 'best_model.pth'))
             print(f'Best model saved with val loss {best_val_loss:.4f}')
         
         if lr_scheduler:
@@ -94,6 +85,5 @@ if __name__ == '__main__':
     optimizer = Adam(model.parameters(), lr=config['learning_rate'])
     criterion = nn.CrossEntropyLoss(ignore_index=0,label_smoothing=0.1)
     lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=2, factor=0.5)
-    simclr = SimCLR(temperature=0.05).to(device)
     
-    train(model, train_dataloader, val_dataloader, optimizer, criterion, device, lr_scheduler, simclr)
+    train(model, train_dataloader, val_dataloader, optimizer, criterion, device, lr_scheduler)
