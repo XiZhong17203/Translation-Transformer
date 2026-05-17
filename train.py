@@ -1,19 +1,22 @@
 import os
-import yaml
-import json
 import torch
 import torch.nn as nn
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from model import *
 from dataset import load_dataset
+from trans_method import *
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-config = yaml.load(open(os.path.join(BASE_DIR, 'config.yaml'), 'r'), Loader=yaml.FullLoader)
-
-
-def train(model, dataloader, val_dataloader, optimizer, criterion, device, lr_scheduler=None):
+def train(
+    model,
+    dataloader,
+    val_dataloader,
+    optimizer, 
+    criterion,
+    device,
+    lr_scheduler=None
+    ):
     best_val_loss = 10
     
     for epoch in range(config['num_epochs']):
@@ -48,13 +51,16 @@ def train(model, dataloader, val_dataloader, optimizer, criterion, device, lr_sc
                 val_loss += loss.item()
         if val_loss/len(val_dataloader) < best_val_loss:
             best_val_loss = val_loss/len(val_dataloader)
-            print(f'New best model with val loss {best_val_loss:.4f}, saving model...')
+            print(f'\t New best model with val loss {best_val_loss:.4f}, saving model...')
             model_save(model, os.path.join(BASE_DIR, 'model_path', 'best_model.pth'))
-            print(f'Best model saved with val loss {best_val_loss:.4f}')
-        
+            print(f'\t Best model saved with val loss {best_val_loss:.4f}')
         if lr_scheduler:
-            lr_scheduler.step(val_loss)
-        print(f'Epoch {epoch+1}/{config["num_epochs"]}, Loss: {total_loss/len(dataloader):.4f}, Val Loss: {val_loss/len(val_dataloader):.4f}')
+            lr_scheduler.step(val_loss/len(val_dataloader))
+        
+        print(
+            f'Epoch {epoch+1}/{config["num_epochs"]}, Loss: {total_loss/len(dataloader):.4f}, '
+            f'Val Loss: {val_loss/len(val_dataloader):.4f}'
+        )
 
     # model_save(model, os.path.join(BASE_DIR, 'model_path', 'model.pth'))
     
@@ -68,22 +74,13 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     train_dataset = load_dataset('train')
     
-    total = 0
-    unk = 0
-    for sample in train_dataset.data:
-        for x in sample['tgt_out']:
-            total += 1
-            if x == 3:
-                unk += 1
-    print(f'unk ratio: {unk/total:.4f}')
-    
     val_dataset = load_dataset('validation')
     train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=train_dataset.collate_fn)
     val_dataloader = DataLoader(val_dataset, batch_size=config['batch_size'], shuffle=False, collate_fn=val_dataset.collate_fn)
     
     model = Transformer().to(device)
-    optimizer = Adam(model.parameters(), lr=config['learning_rate'])
+    optimizer = AdamW(model.parameters(), lr=config['learning_rate'], weight_decay=0.001)
     criterion = nn.CrossEntropyLoss(ignore_index=0,label_smoothing=0.1)
-    lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=2, factor=0.5)
+    lr_scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
     train(model, train_dataloader, val_dataloader, optimizer, criterion, device, lr_scheduler)

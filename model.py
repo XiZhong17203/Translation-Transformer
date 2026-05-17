@@ -108,6 +108,10 @@ class EncoderLayer(nn.Module):
         x = self.norm1(x)
         x = x + self.dropout(self.ffn(x))
         x = self.norm2(x)
+        
+        # Pre-LN
+        # x = x + self.dropout(self.self_attn(self.norm1(x), self.norm1(x), self.norm1(x), mask))
+        # x = x + self.dropout(self.ffn(self.norm2(x)))
         return x
 
 # TODO:Decoder Layer
@@ -136,6 +140,13 @@ class DecoderLayer(nn.Module):
         x = self.norm2(x)
         x = x + self.dropout(self.ffn(x))
         x = self.norm3(x)
+        
+        # Pre-LN
+        # x = x + self.dropout(self.masked_attn(self.norm1(x), self.norm1(x), self.norm1(x), tgt_mask))
+        # # q:x k,v:encoder
+        # enc_output = self.norm2(enc_output)
+        # x = x + self.dropout(self.cross_attn(self.norm2(x), enc_output, enc_output, src_mask))
+        # x = x + self.dropout(self.ffn(self.norm3(x)))
         return x
 
 # TODO:Transformer
@@ -156,7 +167,7 @@ class Transformer(nn.Module):
         tgt_output = tgt_emb
         for layer in self.encoder_layers:
             enc_output = layer(enc_output, src_mask)
-            tgt_output = layer(tgt_output, tgt_mask[0])
+            # tgt_output = layer(tgt_output, tgt_mask[0])
         dec_output = tgt_emb
         for layer in self.decoder_layers:
             dec_output = layer(dec_output, enc_output, src_mask, tgt_mask)
@@ -165,46 +176,47 @@ class Transformer(nn.Module):
         # Add encoder output for SimCLR
         return output, (enc_output, tgt_output)
 
-# TODO:Add SimCLR
-# class SimCLR(nn.Module):
-#     def __init__(self, d_model=config['d_model'], proj_dim=128, temperature=0.1):
-#         super().__init__()
+# TODO:SimCLR
+class SimCLR(nn.Module):
+    def __init__(self, d_model=config['d_model'], proj_dim=128, temperature=0.1):
+        super().__init__()
         
-#         self.temperature = temperature
-#         self.src_projector = nn.Sequential(
-#             nn.Linear(d_model, d_model),
-#             nn.ReLU(),
-#             nn.Linear(d_model, proj_dim)
-#         )
+        self.temperature = temperature
+        self.src_projector = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, proj_dim)
+        )
         
-#         self.tgt_projector = nn.Sequential(
-#             nn.Linear(d_model, d_model),
-#             nn.ReLU(),
-#             nn.Linear(d_model, proj_dim)
-#         )
+        self.tgt_projector = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, proj_dim)
+        )
     
-#     def pooling(self, features, mask):
-#         # features: [batch_size, seq_len, d_model], mask: [batch_size, seq_len]
-#         # print(features.size(), mask.size())
-#         masked_features = features * mask.unsqueeze(-1)
-#         pooled = masked_features.sum(dim=1) / mask.sum(dim=1, keepdim=True)
-#         return pooled
+    def pooling(self, features, mask):
+        # features: [batch_size, seq_len, d_model], mask: [batch_size, seq_len]
+        # print(features.size(), mask.size())
+        masked_features = features * mask.unsqueeze(-1)
+        pooled = masked_features.sum(dim=1) / mask.sum(dim=1, keepdim=True)
+        return pooled
     
-#     def forward(self, feature1, feature2, mask1, mask2):
-#         # feature1, feature2: [batch_size, seq_len, d_model], mask1, mask2: [batch_size, 1, 1, seq_len]
-#         pooled1 = self.pooling(feature1, mask1)
-#         pooled2 = self.pooling(feature2, mask2)
+    def forward(self, feature1, feature2, mask1, mask2):
+        # feature1, feature2: [batch_size, seq_len, d_model], mask1, mask2: [batch_size, 1, 1, seq_len]
+        pooled1 = self.pooling(feature1, mask1)
+        pooled2 = self.pooling(feature2, mask2)
         
-#         z1 = self.src_projector(pooled1)
-#         z2 = self.tgt_projector(pooled2)
+        z1 = self.src_projector(pooled1)
+        z2 = self.tgt_projector(pooled2)
         
-#         z1 = F.normalize(z1, dim=1)
-#         z2 = F.normalize(z2, dim=1)
+        z1 = F.normalize(z1, dim=1)
+        z2 = F.normalize(z2, dim=1)
         
-#         logits = z1 @ z2.T / self.temperature
-#         labels = torch.arange(logits.size(0)).to(logits.device)
-#         loss1 = F.cross_entropy(logits, labels)
-#         loss2 = F.cross_entropy(logits.T, labels)
-#         loss = (loss1 + loss2) / 2
+        logits = z1 @ z2.T / self.temperature
+        labels = torch.arange(logits.size(0)).to(logits.device)
+        loss1 = F.cross_entropy(logits, labels)
+        loss2 = F.cross_entropy(logits.T, labels)
+        loss = (loss1 + loss2) / 2
         
-#         return loss
+        return loss
+
