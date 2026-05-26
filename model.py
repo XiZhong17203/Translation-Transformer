@@ -24,7 +24,7 @@ class PositionEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        return x + self.pe[:, :x.size(1), :]
+        return x + self.pe[:, :x.size(1), :].detach()
 
 # TODO:Input Embedding
 class InputEmbedding(nn.Module):
@@ -159,6 +159,9 @@ class Transformer(nn.Module):
         self.decoder_layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_decoder_layers)])
         self.output_linear = nn.Linear(d_model, config['cn_vocab_size'])
         self.dropout = nn.Dropout(dropout)
+
+    def clip_grad(self, max_norm=1.0):
+        nn.utils.clip_grad_norm_(self.parameters(), max_norm)
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
         src_emb, tgt_emb = self.input_embedding(src, tgt)
         src_emb = self.dropout(self.position_encoding(src_emb))
@@ -167,7 +170,7 @@ class Transformer(nn.Module):
         tgt_output = tgt_emb
         for layer in self.encoder_layers:
             enc_output = layer(enc_output, src_mask)
-            tgt_output = layer(tgt_output, tgt_mask[0])
+            # tgt_output = layer(tgt_output, tgt_mask[0])
         dec_output = tgt_emb
         for layer in self.decoder_layers:
             dec_output = layer(dec_output, enc_output, src_mask, tgt_mask)
