@@ -167,7 +167,7 @@ class Transformer(nn.Module):
         tgt_output = tgt_emb
         for layer in self.encoder_layers:
             enc_output = layer(enc_output, src_mask)
-            # tgt_output = layer(tgt_output, tgt_mask[0])
+            tgt_output = layer(tgt_output, tgt_mask[0])
         dec_output = tgt_emb
         for layer in self.decoder_layers:
             dec_output = layer(dec_output, enc_output, src_mask, tgt_mask)

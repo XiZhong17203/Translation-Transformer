@@ -7,13 +7,13 @@ num_decoder_layers : 4
 
 dim_feedforward : 512
 
-dropout : 0.4
+dropout : 0.3
 
 batch_size : 32
 
 learning_rate : 0.0005
 
-num_epochs : 50
+num_epochs : 80
 
 max_len : 45
 
